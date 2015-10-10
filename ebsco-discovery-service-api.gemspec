@@ -1,7 +1,7 @@
 Gem::Specification.new do |s|
   s.name    = 'ebsco-discovery-service-api'
-  s.version = '1.1.9'
-  s.date    = '2015-10-01'
+  s.version = '1.1.10'
+  s.date    = '2015-10-10'
   s.summary = "EBSCO Discovery Service API Ruby Library"
   s.description = "Set of Ruby functions to interface with the EBSCO Discovery Service API."
   s.authors = ["Eric Frierson"]
