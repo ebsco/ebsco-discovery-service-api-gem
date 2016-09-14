@@ -58,7 +58,7 @@ module EDSApi
 		end
 		def ip_authenticate(format = :xml)
 			uri = URI "#{API_URL_S}authservice/rest/ipauth"
-			req = Net::Http:Post.new(uri.request_uri)
+			req = Net::HTTP::Post.new(uri.request_uri)
 			req["Accept"] = "application/json" #if format == :json
 			https = Net::HTTP.new(uri.hostname, uri.port)
 			https.read_timeout=10
