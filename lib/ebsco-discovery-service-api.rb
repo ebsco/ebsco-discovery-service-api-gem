@@ -10,12 +10,51 @@ module EDSApi
 	API_URL = "http://eds-api.ebscohost.com/"
 	API_URL_S = "https://eds-api.ebscohost.com/"
 
+	DB_LABEL_LOOKUP = {}
+	DB_LABEL_LOOKUP["EDB"] = "Publisher Provided Full Text Searching File"
+	DB_LABEL_LOOKUP["EDO"] = "Supplemental Index"
+	DB_LABEL_LOOKUP["ASX"] = "Academic Search Index"
+	DB_LABEL_LOOKUP["A9H"] = "Academic Search Complete"
+	DB_LABEL_LOOKUP["APH"] = "Academic Search Premier"
+	DB_LABEL_LOOKUP["AFH"] = "Academic Search Elite"
+	DB_LABEL_LOOKUP["A2H"] = "Academic Search Alumni Edition"
+	DB_LABEL_LOOKUP["ASM"] = "Academic Search Main Edition"
+	DB_LABEL_LOOKUP["ASR"] = "STM Source"
+	DB_LABEL_LOOKUP["BSX"] = "Business Source Index"
+	DB_LABEL_LOOKUP["EDSEBK"] = "Discovery eBooks"
+	DB_LABEL_LOOKUP["VTH"] = "Art & Architecture Complete"
+	DB_LABEL_LOOKUP["IIH"] = "Computers & Applied Sciences Complete"
+	DB_LABEL_LOOKUP["CMH"] = "Consumer Health Complete - CHC Platform"
+	DB_LABEL_LOOKUP["C9H"] = "Consumer Health Complete - EBSCOhost"
+	DB_LABEL_LOOKUP["EOAH"] = "E-Journals Database"
+	DB_LABEL_LOOKUP["EHH"] = "Education Research Complete"
+	DB_LABEL_LOOKUP["HCH"] = "Health Source: Nursing/Academic"
+	DB_LABEL_LOOKUP["HXH"] = "Health Source: Consumer Edition"
+	DB_LABEL_LOOKUP["HLH"] = "Humanities International Complete"
+	DB_LABEL_LOOKUP["LGH"] = "Legal Collection"
+	DB_LABEL_LOOKUP["SLH"] = "Sociological Collection"
+	DB_LABEL_LOOKUP["CPH"] = "Computer Source"
+	DB_LABEL_LOOKUP["PBH"] = "Psychology & Behavioral Sciences Collection"
+	DB_LABEL_LOOKUP["RLH"] = "Religion & Philosophy Collection"
+	DB_LABEL_LOOKUP["NFH"] = "Newspaper Source"
+	DB_LABEL_LOOKUP["N5H"] = "Newspaper Source Plus"
+	DB_LABEL_LOOKUP["BWH"] = "Regional Business News"
+	DB_LABEL_LOOKUP["OFM"] = "OmniFile Full Text Mega"
+	DB_LABEL_LOOKUP["RSS"] = "Rehabilitation & Sports Medicine Source"
+	DB_LABEL_LOOKUP["SYH"] = "Science & Technology Collection"
+	DB_LABEL_LOOKUP["SCF"] = "Science Full Text Select"
+	DB_LABEL_LOOKUP["HEH"] = "Health Business Elite"
+
 	class EDSAPIRecord
 
 		attr_accessor :record
 
 		def initialize(results_record)
 			@record = results_record;
+		end
+
+		def resultid
+			@record["ResultId"]
 		end
 
 		def an
@@ -35,11 +74,33 @@ module EDSApi
 		end
 
 		def pubtype
-			@records["Header"]["PubType"]
+			@record["Header"]["PubType"]
 		end
 
 		def pubtype_id
-			@records["Header"]["PubTypeId"]
+			@record["Header"]["PubTypeId"]
+		end
+
+		def db_label
+			if DB_LABEL_LOOKUP.key?(self.dbid.upcase)
+				dblabel = DB_LABEL_LOOKUP[self.dbid.upcase];
+			else
+				dblabel = @record["Header"]["DbLabel"]
+			end
+		end
+
+		def coverart (size_requested = "all")
+			returned_images = []
+
+			images = @record.fetch('ImageInfo', {})
+			if images.count > 0
+				images.each do |image|
+					if size_requested == image["Size"] || size_requested == "all"
+						returned_images.push({size: image["Size"], src: image["Target"]})
+					end
+				end
+			end
+			return returned_images
 		end
 
 		def title
@@ -61,7 +122,7 @@ module EDSApi
 				end
 			end
 
-			return "Title not available"
+			return nil
 		end
 
 		def title_raw
@@ -81,21 +142,260 @@ module EDSApi
 					end
 				end
 			end
-			return "Title not available"
+			return nil
 		end
 		#end title_raw
 
+		def authors
+
+			items = @record.fetch('Items',{})
+			if items.count > 0
+				items.each do |item|
+					if item["Group"] == "Au"
+						return item["Data"]
+					end
+				end
+			end
+
+			contributors = @record.fetch('RecordInfo', {}).fetch('BibRecord', {}).fetch('BibRelationships', {}).fetch('HasContributorRelationships', {})
+
+			if contributors.count > 0
+				authors = []
+				contributors.each do |contributor|
+					return_string = contributor.to_s
+					names = contributor.fetch('PersonEntity',{})
+					return_string << "---" << names.to_s
+					authors.push(names['Name']['NameFull'])
+				end
+				author_str = authors.join("; ")
+				return author_str
+			end
+
+			return nil
+		end
+
+		def authors_raw
+
+			contributors = @record.fetch('RecordInfo', {}).fetch('BibRecord', {}).fetch('BibRelationships', {}).fetch('HasContributorRelationships', {})
+
+			if contributors.count > 0
+				authors = []
+				contributors.each do |contributor|
+					names = contributor.fetch('PersonEntity',{})
+					authors.push(names['Name']['NameFull'])
+				end
+				return authors
+			end
+
+			items = @record.fetch('Items',{})
+			if items.count > 0
+				items.each do |item|
+					if item["Group"] == "Au"
+						return [item["Data"]]
+					end
+				end
+			end
+
+			return []
+		end
+
+
+		def subjects
+
+			items = @record.fetch('Items',{})
+			if items.count > 0
+				items.each do |item|
+					if item["Group"] == "Su"
+						return item["Data"]
+					end
+				end
+			end
+
+			subjects = @record.fetch('RecordInfo', {}).fetch('BibRecord', {}).fetch('BibEntity', {}).fetch('Subjects', {})
+
+			if subjects.count > 0
+				subs = []
+				subjects.each do |subject|
+					subs.push(subject["SubjectFull"])
+				end
+				subs_str = subs.join("; ")
+				return subs_str
+			end
+
+			return nil
+		end
+
+		def subjects_raw
+
+			subjects = @record.fetch('RecordInfo', {}).fetch('BibRecord', {}).fetch('BibEntity', {}).fetch('Subjects', {})
+
+			if subjects.count > 0
+				subs = []
+				subjects.each do |subject|
+					subs.push(subject)
+				end
+				return subs
+			end
+
+			items = @record.fetch('Items',{})
+			if items.count > 0
+				items.each do |item|
+					if item["Group"] == "Su"
+						return [item["Data"]]
+					end
+				end
+			end
+
+			return []
+		end
+
+		def languages
+			language_section = @record.fetch('RecordInfo', {}).fetch('BibRecord', {}).fetch('BibEntity', {}).fetch('Languages', {})
+
+			if language_section.count > 0
+				langs = []
+				language_section.each do |language|
+					langs.push(language["Text"])
+				end
+				return langs
+			end
+			return []
+		end
+
+		def pages
+			pagination_section = @record.fetch('RecordInfo', {}).fetch('BibRecord', {}).fetch('BibEntity', {}).fetch('PhysicalDescription', {})
+
+			if pagination_section.count > 0
+				return pagination_section["Pagination"]
+			end
+			return {}
+		end
+
 		def source
+
 			items = @record.fetch('Items',{})
 			if items.count > 0
 				items.each do |item|
 					if item["Group"] == "Src"
-						full_source = item["Data"]
+						return item["Data"]
+					end
+				end
+			end
+
+			return nil
+		end
+
+		def source_title
+
+			unless self.source.nil?
+				ispartof = @record.fetch('RecordInfo', {}).fetch('BibRecord', {}).fetch('BibRelationships', {}).fetch('IsPartOfRelationships', {})
+
+				if ispartof.count > 0
+					ispartof.each do |contributor|
+						titles = contributor.fetch('BibEntity',{}).fetch('Titles',{})
+						titles.each do |title_src|
+							if title_src["Type"] == "main"
+								return title_src["TitleFull"]
+							end
+						end
 					end
 				end
 			end
 			return nil
+
 		end
+
+		def numbering
+			ispartof = @record.fetch('RecordInfo', {}).fetch('BibRecord', {}).fetch('BibRelationships', {}).fetch('IsPartOfRelationships', {})
+
+			if ispartof.count > 0
+				numbering = []
+				ispartof.each do |contributor|
+					nums = contributor.fetch('BibEntity',{}).fetch('Numbering',{})
+					nums.each do |num|
+						numbering.push(num)
+					end
+				end
+				return numbering
+			end
+
+			return []
+		end
+
+		def doi
+			ispartof = @record.fetch('RecordInfo', {}).fetch('BibRecord', {}).fetch('BibEntity', {}).fetch('Identifiers', {})
+
+			if ispartof.count > 0
+				ispartof.each do |ids|
+					if ids["Type"] == "doi"
+						return ids["Value"]
+					end
+				end
+			end
+
+			return nil
+		end
+
+		def isbn
+
+			ispartof = @record.fetch('RecordInfo', {}).fetch('BibRecord', {}).fetch('BibRelationships', {}).fetch('IsPartOfRelationships', {})
+
+			if ispartof.count > 0
+				issns = []
+				ispartof.each do |part_of|
+					ids = part_of.fetch('BibEntity',{}).fetch('Identifiers',{})
+					ids.each do |id|
+						if id["Type"].include?("isbn") && !id["Type"].include?("locals")
+							issns.push(id)
+						end
+					end
+				end
+				return issns
+			end
+			return []
+		end
+
+		def issn
+
+			ispartof = @record.fetch('RecordInfo', {}).fetch('BibRecord', {}).fetch('BibRelationships', {}).fetch('IsPartOfRelationships', {})
+
+			if ispartof.count > 0
+				issns = []
+				ispartof.each do |part_of|
+					ids = part_of.fetch('BibEntity',{}).fetch('Identifiers',{})
+					ids.each do |id|
+						if id["Type"].include?("issn") && !id["Type"].include?("locals")
+							issns.push(id)
+						end
+					end
+				end
+				return issns
+			end
+			return []
+	  end
+
+		def source_isbn
+		  unless self.source.nil?
+
+				ispartof = @record.fetch('RecordInfo', {}).fetch('BibRecord', {}).fetch('BibRelationships', {}).fetch('IsPartOfRelationships', {})
+
+				if ispartof.count > 0
+					issns = []
+					ispartof.each do |part_of|
+						ids = part_of.fetch('BibEntity',{}).fetch('Identifiers',{})
+						ids.each do |id|
+							if id["Type"].include?("isbn") && !id["Type"].include?("locals")
+								issns.push(id)
+							end
+						end
+					end
+					return issns
+				end
+		  end
+			return []
+		end
+
+
 
 		def pubyear
 			ispartofs = @record.fetch('RecordInfo', {}).fetch('BibRecord', {}).fetch('BibRelationships', {}).fetch('IsPartOfRelationships', {})
@@ -310,41 +610,6 @@ module EDSApi
 					end
 				end
 			end
-
-			@dblabel = {}
-			@dblabel["EDB"] = "Publisher Provided Full Text Searching File"
-			@dblabel["EDO"] = "Supplemental Index"
-			@dblabel["ASX"] = "Academic Search Index"
-			@dblabel["A9H"] = "Academic Search Complete"
-			@dblabel["APH"] = "Academic Search Premier"
-			@dblabel["AFH"] = "Academic Search Elite"
-			@dblabel["A2H"] = "Academic Search Alumni Edition"
-			@dblabel["ASM"] = "Academic Search Main Edition"
-			@dblabel["ASR"] = "STM Source"
-			@dblabel["BSX"] = "Business Source Index"
-			@dblabel["EDSEBK"] = "Discovery eBooks"
-			@dblabel["VTH"] = "Art & Architecture Complete"
-			@dblabel["IIH"] = "Computers & Applied Sciences Complete"
-			@dblabel["CMH"] = "Consumer Health Complete - CHC Platform"
-			@dblabel["C9H"] = "Consumer Health Complete - EBSCOhost"
-			@dblabel["EOAH"] = "E-Journals Database"
-			@dblabel["EHH"] = "Education Research Complete"
-			@dblabel["HCH"] = "Health Source: Nursing/Academic"
-			@dblabel["HXH"] = "Health Source: Consumer Edition"
-			@dblabel["HLH"] = "Humanities International Complete"
-			@dblabel["LGH"] = "Legal Collection"
-			@dblabel["SLH"] = "Sociological Collection"
-			@dblabel["CPH"] = "Computer Source"
-			@dblabel["PBH"] = "Psychology & Behavioral Sciences Collection"
-			@dblabel["RLH"] = "Religion & Philosophy Collection"
-			@dblabel["NFH"] = "Newspaper Source"
-			@dblabel["N5H"] = "Newspaper Source Plus"
-			@dblabel["BWH"] = "Regional Business News"
-			@dblabel["OFM"] = "OmniFile Full Text Mega"
-			@dblabel["RSS"] = "Rehabilitation & Sports Medicine Source"
-			@dblabel["SYH"] = "Science & Technology Collection"
-			@dblabel["SCF"] = "Science Full Text Select"
-			@dblabel["HEH"] = "Health Business Elite"
 		end
 
 		def hitcount
@@ -359,8 +624,8 @@ module EDSApi
 			databases = []
 			databases_facet = @results["SearchResult"]["Statistics"]["Databases"]
 			databases_facet.each do |database|
-				if @dblabel.key?(database["Id"].upcase)
-					db_label = @dblabel[database["Id"].upcase];
+				if DB_LABEL_LOOKUP.key?(database["Id"].upcase)
+					db_label = DB_LABEL_LOOKUP[database["Id"].upcase];
 				else
 					db_label = database["Label"]
 				end
