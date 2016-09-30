@@ -162,9 +162,7 @@ module EDSApi
 			if contributors.count > 0
 				authors = []
 				contributors.each do |contributor|
-					return_string = contributor.to_s
 					names = contributor.fetch('PersonEntity',{})
-					return_string << "---" << names.to_s
 					authors.push(names['Name']['NameFull'])
 				end
 				author_str = authors.join("; ")
