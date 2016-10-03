@@ -563,6 +563,8 @@ module EDSApi
 
 	end
 
+	## SEARCH RESPONSE PARSING
+
 	class EDSAPIResponse
 
 		attr_accessor :results, :records, :dblabel, :researchstarters, :publicationmatch, :debug
@@ -570,7 +572,12 @@ module EDSApi
 		def initialize(search_results)
 			@debug = ""
 			@results = search_results
-			if hitcount > 0
+
+			unless @results['ErrorNumber'].nil?
+				return search_results
+			end
+
+			if self.hitcount > 0
 				@records = []
 				search_results["SearchResult"]["Data"]["Records"].each do |record|
 					@records.push(EDSApi::EDSAPIRecord.new(record))
@@ -616,6 +623,58 @@ module EDSApi
 
 		def searchtime
 			@results["SearchResult"]["Statistics"]["TotalSearchTime"]
+		end
+
+		def querystring
+			@results["SearchRequestGet"]["QueryString"]
+		end
+
+		def current_search
+			CGI::parse(self.querystring)
+		end
+
+		def applied_facets
+
+			af = []
+
+			applied_facets_section = @results["SearchRequestGet"].fetch('SearchCriteriaWithActions',{}).fetch('FacetFiltersWithAction',{})
+			applied_facets_section.each do |applied_facets|
+				applied_facets.fetch('FacetValuesWithAction',{}).each do |applied_facet|
+					af.push(applied_facet)
+#					unless applied_facet['FacetValuesWithAction'].nil?
+#						applied_facet_values = applied_facet.fetch('FacetValuesWithAction',{})
+#						applied_facet_values.each do |applied_facet_value|
+#							af.push(applied_facet_value)
+#						end
+#					end
+				end
+			end
+
+			return af
+		end
+
+		def applied_limiters
+
+			af = []
+
+			applied_limters_section = @results["SearchRequestGet"].fetch('SearchCriteriaWithActions',{}).fetch('LimitersWithAction',{})
+			applied_limters_section.each do |applied_limter|
+				af.push(applied_limter)
+			end
+
+			return af
+		end
+
+		def applied_expanders
+
+			af = []
+
+			applied_expanders_section = @results["SearchRequestGet"].fetch('SearchCriteriaWithActions',{}).fetch('ExpandersWithAction',{})
+			applied_expanders_section.each do |applied_explander|
+				af.push(applied_explander)
+			end
+
+			return af
 		end
 
 		def database_stats
@@ -670,11 +729,174 @@ module EDSApi
 
 	end
 
+	class EDSAPIInfo
+
+		attr_accessor :info
+
+		def initialize(info_raw)
+			@info = info_raw
+		end
+
+		def sorts (id = "all")
+			possible_sorts = []
+			available_sorts = @info['AvailableSearchCriteria'].fetch('AvailableSorts',{})
+			available_sorts.each do |available_sort|
+				if available_sort["Id"] == id || id == "all"
+					possible_sorts.push(available_sort)
+				end
+			end
+			return possible_sorts
+		end
+
+		def search_fields (id = "all")
+			possible_fields = []
+			available_fields = @info['AvailableSearchCriteria'].fetch('AvailableSearchFields',{})
+			available_fields.each do |available_field|
+				if available_field['Id'] == id || id == "all"
+					possible_fields.push(available_field)
+				end
+			end
+			return possible_fields
+		end
+
+		def expanders (id = "all")
+			possible_expanders = []
+			available_expanders = @info['AvailableSearchCriteria'].fetch('AvailableExpanders',{})
+			available_expanders.each do |available_expander|
+				if available_expander['Id'] == id || id == "all"
+					possible_expanders.push(available_expander)
+				end
+			end
+			return possible_expanders
+		end
+
+		def limiters (id = "all")
+			possible_limiters = []
+			available_limiters = @info['AvailableSearchCriteria'].fetch('AvailableLimiters',{})
+			available_limiters.each do |available_limiter|
+				if available_limiter['Id'] == id || id == "all"
+					possible_limiters.push(available_limiter)
+				end
+			end
+			return possible_limiters
+		end
+
+		def search_modes (id = "all")
+			possible_search_modes = []
+			available_search_modes = @info['AvailableSearchCriteria'].fetch('AvailableSearchModes',{})
+			available_search_modes.each do |available_search_mode|
+				if available_search_mode['Id'] == id || id == "all"
+					possible_search_modes.push(available_search_mode)
+				end
+			end
+			return possible_search_modes
+		end
+
+		def related_content (id = "all")
+			possible_related_contents = []
+			available_related_contents = @info['AvailableSearchCriteria'].fetch('AvailableRelatedContent',{})
+			available_related_contents.each do |available_related_content|
+				if available_related_content['Id'] == id || id == "all"
+					possible_related_contents.push(available_related_content)
+				end
+			end
+			return possible_related_contents
+		end
+
+		def related_content (id = "all")
+			possible_related_contents = []
+			available_related_contents = @info['AvailableSearchCriteria'].fetch('AvailableRelatedContent',{})
+			available_related_contents.each do |available_related_content|
+				if available_related_content['Id'] == id || id == "all"
+					possible_related_contents.push(available_related_content)
+				end
+			end
+			return possible_related_contents
+		end
+
+		def did_you_mean (id = "all")
+			possible_dyms = []
+			available_dyms = @info['AvailableSearchCriteria'].fetch('AvailableDidYouMeanOptions',{})
+			available_dyms.each do |available_dym|
+				if available_dym['Id'] == id || id == "all"
+					possible_dyms.push(available_dym)
+				end
+			end
+			return possible_dyms
+		end
+
+		def results_per_page
+			return @info['ViewResultSettings']['ResultsPerPage']
+		end
+
+		def results_list_view
+			return @info['ViewResultSettings']['ResultListView']
+		end
+
+		def default_options
+			options = {}
+			self.search_modes.each do |search_mode|
+				if search_mode['DefaultOn'] == "y"
+					options['searchmode'] = [search_mode['Mode']]
+				end
+			end
+
+			options['resultsperpage'] = [self.results_per_page]
+			options['sort'] = ['relevance']
+			options['view'] = [self.results_list_view]
+
+			default_limiters = []
+			self.limiters.each do |limiter|
+				if limiter['Type'] == 'select' && limiter['DefaultOn'] == 'y'
+					default_limiters.push(limiter['Id']+":"+'y')
+				elsif limiter['Type'] == 'multiselectvalue'
+					limiter['LimiterValues'].each do |limiter_value|
+						unless limiter_value['DefaultOn'].nil?
+							default_limiters.push(limiter['Id']+":"+limiter_value['Value'])
+						end
+					end
+				end
+			end
+			if default_limiters.count > 0
+				options['limiter'] = default_limiters
+			end
+
+			default_expanders = []
+			self.expanders.each do |expander|
+				if expander['DefaultOn'] == 'y'
+					default_expanders.push(expander['Id'])
+				end
+			end
+			if default_expanders.count > 0
+				options['expander'] = default_expanders
+			end
+
+			default_relatedcontent = []
+			self.related_content.each do |related_info|
+				if related_info['DefaultOn'] == 'y'
+					default_relatedcontent.push(related_info['Type'])
+				end
+			end
+			if default_relatedcontent.count > 0
+				options['relatedcontent'] = [default_relatedcontent.join(",")]
+			end
+
+			return options
+		end
+
+	end
+
+  ## CONNECTION HANDLING
+
 	# Connection object. Does what it says. ConnectionHandler is what is usually desired and wraps auto-reonnect features, etc.
 	class Connection
 
 	  attr_accessor :auth_token, :session_token, :guest
 	  attr_writer :userid, :password
+
+		def initialize
+			@log = ""
+		end
 
 	  # Init the object with userid and pass.
 		def uid_init(userid, password, profile, guest = 'y')
@@ -764,8 +986,9 @@ module EDSApi
 			return true
 		end
 		# Run a search query, XML results are returned
-        def search(options, format = :xml)
+    def request_search(options, format = :xml)
 			uri = URI "#{API_URL}edsapi/rest/Search?#{options}"
+			@log << uri.to_s << " -- "
 			#return uri.request_uri
 			req = Net::HTTP::Get.new(uri.request_uri)
 
@@ -782,8 +1005,10 @@ module EDSApi
 			}
         end
 	  # Retrieve specific information
-		def retrieve(dbid, an, highlightterms = "", ebookpreferredformat = "", format = :xml)
+		def request_retrieve(dbid, an, highlightterms = "", ebookpreferredformat = "", format = :xml)
 			uri = URI "#{API_URL}edsapi/rest/retrieve?dbid=#{dbid}&an=#{an}"
+			@log << uri.to_s << " -- "
+
 			if highlightterms != ""
 				updateURI = uri.to_s
 				updateURI = updateURI + "&highlightterms=#{highlightterms}"
@@ -808,8 +1033,10 @@ module EDSApi
 			}
 		end
 		# Info method
-		def info(format = :xml)
+		def request_info(format = :xml)
 			uri = URI "#{API_URL}edsapi/rest/Info"
+			@log << uri.to_s << " -- "
+
 			req = Net::HTTP::Get.new(uri.request_uri)
 			req['x-authenticationToken'] = @auth_token
 			req['x-sessionToken'] = @session_token
@@ -822,31 +1049,61 @@ module EDSApi
 			end
 			}
 		end
+
+		def show_log
+			return @log
+		end
 	end
+
 	# Handles connections - retries failed connections, passes commands along
 	class ConnectionHandler < Connection
+
 		attr_accessor :max_retries
 		attr_accessor :session_token
+		attr_accessor :info
+
 		def initialize(max_retries = 2)
 			@max_retries = max_retries
+			super()
 		end
+
 		def show_session_token
 		  return @session_token
 		end
+
 		def show_auth_token
 		  return @auth_token
 		end
+
 		def create_session(auth_token = @auth_token, format = :xml)
 			@auth_token = auth_token
-  			result = JSON.parse(super())
-			  if result.has_key?('ErrorNumber')
+			result = JSON.parse(super())
+		  if result.has_key?('ErrorNumber')
 				return result.to_s
-			  else
+		  else
 				@session_token = result['SessionToken']
-			  	return result['SessionToken']
-			  end
+				@info = EDSApi::EDSAPIInfo.new(self.request_info(@session_token,@auth_token))
+		  	return result['SessionToken']
+		  end
 		end
-		def search(options, session_token = @session_token, auth_token = @auth_token, format = :xml)
+
+		def new_search(searchterm, use_defaults = "y")
+			options = @info.default_options
+			options['query'] = searchterm
+			return EDSApi::EDSAPIResponse.new(request_search(URI.encode_www_form(options)))
+			return self.search(options)
+		end
+
+		def search(options, actions = [])
+			if actions.kind_of?(Array) && actions.count > 0
+				options['action'] = actions
+			elsif actions.length > 0
+				options['action'] = [actions]
+			end
+			return EDSApi::EDSAPIResponse.new(request_search(URI.encode_www_form(options)))
+		end
+
+		def request_search(options, session_token = @session_token, auth_token = @auth_token, format = :xml)
 
 			# temporary fix while API SI resolves
 			# catches case where user navigates past result page 250 and applies facet/limiter
@@ -897,10 +1154,11 @@ module EDSApi
 				end
 			end
 		end
-	        def info (session_token, auth_token, format= :xml)
-		   attempts = 0
-		   @auth_token = auth_token
-		   @session_token = session_token
+
+		def request_info (session_token, auth_token, format= :xml)
+		  attempts = 0
+		  @auth_token = auth_token
+		  @session_token = session_token
 			loop do
 			  result = JSON.parse(super(format)) # JSON Parse
 			  if result.has_key?('ErrorNumber')
@@ -921,9 +1179,10 @@ module EDSApi
 			  else
 			  	return result
 			  end
-	                end
-	        end
-	        def retrieve(dbid, an, highlightterms, ebookpreferredformat, session_token, auth_token, format = :xml)
+	    end
+	  end
+
+		def request_retrieve(dbid, an, highlightterms, ebookpreferredformat, session_token, auth_token, format = :xml)
 			attempts = 0
 			@session_token = session_token
 			@auth_token = auth_token
