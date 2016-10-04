@@ -58,11 +58,11 @@ module EDSApi
 		end
 
 		def an
-			@record["Header"]["An"]
+			@record["Header"]["An"].to_s
 		end
 
 		def dbid
-			@record["Header"]["DbId"]
+			@record["Header"]["DbId"].to_s
 		end
 
 		def plink
@@ -89,7 +89,7 @@ module EDSApi
 			end
 		end
 
-		def coverart (size_requested = "all")
+		def images (size_requested = "all")
 			returned_images = []
 
 			images = @record.fetch('ImageInfo', {})
@@ -269,6 +269,27 @@ module EDSApi
 			return {}
 		end
 
+		def abstract
+			items = @record.fetch('Items',{})
+			if items.count > 0
+				items.each do |item|
+					if item["Group"] == "Ab"
+						return item["Data"]
+					end
+				end
+			end
+
+			return nil
+		end
+
+		def html_fulltext
+			htmlfulltextcheck = @record.fetch('FullText',{}).fetch('Text',{}).fetch('Availability',0)
+			if htmlfulltextcheck == "1"
+				return @record.fetch('FullText',{}).fetch('Text',{})["Value"]
+			end
+			return nil
+		end
+
 		def source
 
 			items = @record.fetch('Items',{})
@@ -334,7 +355,7 @@ module EDSApi
 			return nil
 		end
 
-		def isbn
+		def isbns
 
 			ispartof = @record.fetch('RecordInfo', {}).fetch('BibRecord', {}).fetch('BibRelationships', {}).fetch('IsPartOfRelationships', {})
 
@@ -353,7 +374,7 @@ module EDSApi
 			return []
 		end
 
-		def issn
+		def issns
 
 			ispartof = @record.fetch('RecordInfo', {}).fetch('BibRecord', {}).fetch('BibRelationships', {}).fetch('IsPartOfRelationships', {})
 
@@ -561,6 +582,13 @@ module EDSApi
 			return {}
 		end
 
+		def retrieve_options
+			options = {}
+			options['an'] = self.an
+			options['dbid'] = self.dbid
+			return options
+		end
+
 	end
 
 	## SEARCH RESPONSE PARSING
@@ -727,6 +755,19 @@ module EDSApi
 			return nil
 		end
 
+		def searchterms
+			queries = @results.fetch('SearchRequestGet',{}).fetch('SearchCriteriaWithActions',{}).fetch('QueriesWithAction',{})
+
+			terms = []
+			queries.each do |query|
+				query['Query']['Term'].split.each do |word|
+					terms.push(word)
+				end
+			end
+
+			return terms
+		end
+
 	end
 
 	class EDSAPIInfo
@@ -752,7 +793,7 @@ module EDSApi
 			possible_fields = []
 			available_fields = @info['AvailableSearchCriteria'].fetch('AvailableSearchFields',{})
 			available_fields.each do |available_field|
-				if available_field['Id'] == id || id == "all"
+				if available_field['FieldCode'] == id || id == "all"
 					possible_fields.push(available_field)
 				end
 			end
@@ -785,7 +826,7 @@ module EDSApi
 			possible_search_modes = []
 			available_search_modes = @info['AvailableSearchCriteria'].fetch('AvailableSearchModes',{})
 			available_search_modes.each do |available_search_mode|
-				if available_search_mode['Id'] == id || id == "all"
+				if available_search_mode['Mode'] == id || id == "all"
 					possible_search_modes.push(available_search_mode)
 				end
 			end
@@ -796,18 +837,7 @@ module EDSApi
 			possible_related_contents = []
 			available_related_contents = @info['AvailableSearchCriteria'].fetch('AvailableRelatedContent',{})
 			available_related_contents.each do |available_related_content|
-				if available_related_content['Id'] == id || id == "all"
-					possible_related_contents.push(available_related_content)
-				end
-			end
-			return possible_related_contents
-		end
-
-		def related_content (id = "all")
-			possible_related_contents = []
-			available_related_contents = @info['AvailableSearchCriteria'].fetch('AvailableRelatedContent',{})
-			available_related_contents.each do |available_related_content|
-				if available_related_content['Id'] == id || id == "all"
+				if available_related_content['Type'] == id || id == "all"
 					possible_related_contents.push(available_related_content)
 				end
 			end
@@ -1061,6 +1091,7 @@ module EDSApi
 		attr_accessor :max_retries
 		attr_accessor :session_token
 		attr_accessor :info
+		attr_accessor :search_results
 
 		def initialize(max_retries = 2)
 			@max_retries = max_retries
@@ -1090,7 +1121,6 @@ module EDSApi
 		def new_search(searchterm, use_defaults = "y")
 			options = @info.default_options
 			options['query'] = searchterm
-			return EDSApi::EDSAPIResponse.new(request_search(URI.encode_www_form(options)))
 			return self.search(options)
 		end
 
@@ -1100,7 +1130,24 @@ module EDSApi
 			elsif actions.length > 0
 				options['action'] = [actions]
 			end
-			return EDSApi::EDSAPIResponse.new(request_search(URI.encode_www_form(options)))
+			apiresponse = EDSApi::EDSAPIResponse.new(request_search(URI.encode_www_form(options)))
+			@current_searchterms = apiresponse.searchterms
+			@search_results = apiresponse
+			return apiresponse
+		end
+
+		def search_actions(actions)
+			return self.search(@search_results.current_search,actions)
+		end
+
+		def retrieve(options)
+			options['highlightterms'] = @current_searchterms
+			options['ebookpreferredformat'] = 'ebook-epub'
+			apiresponse = request_retrieve(options['dbid'],options['an'],options['hhighlightterms'])
+			unless apiresponse["Record"].nil?
+				return EDSApi::EDSAPIRecord.new(apiresponse["Record"])
+			end
+			return apiresponse
 		end
 
 		def request_search(options, session_token = @session_token, auth_token = @auth_token, format = :xml)
@@ -1182,7 +1229,7 @@ module EDSApi
 	    end
 	  end
 
-		def request_retrieve(dbid, an, highlightterms, ebookpreferredformat, session_token, auth_token, format = :xml)
+		def request_retrieve(dbid, an, highlightterms, ebookpreferredformat = 'ebook-epub', session_token = @session_token, auth_token = @auth_token, format = :xml)
 			attempts = 0
 			@session_token = session_token
 			@auth_token = auth_token
