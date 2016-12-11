@@ -1,6 +1,7 @@
 require 'net/http'
 require 'cgi'
 require 'json'
+require 'openssl'
 
 #TO DO: Finish publication Exact Match object - probably needs to be a subclass of EDSAPIRecord
 #TO DO: Finish Detailed Records
