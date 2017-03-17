@@ -66,7 +66,7 @@ module EDSApi
 		end
 
 		def plink
-			@record["Header"]["PLink"]
+			@record["PLink"]
 		end
 
 		def score
